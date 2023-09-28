@@ -1,1 +1,1 @@
-# Abraracourcix
+# Abraracourcix - A small genome assembler
