@@ -14,6 +14,7 @@
 #include <omp.h>
 #include <regex>
 #include <string_view>
+#include "poopy-aligner.cpp"
 
 using std::string;
 using std::vector;
@@ -65,9 +66,8 @@ class SuffixArray{
             charClass[order[i]] = charClass[order[i - 1]] + 1;
         } else {
             charClass[order[i]] = charClass[order[i - 1]];
+            }
         }
-    }
-
         return charClass;
     }
 
@@ -129,17 +129,31 @@ std::vector<long> updateClasses(const std::vector<long>& newOrder, const std::ve
     }
 };
 struct Occurrence {
-    int position;
-    std::string pattern;
+    long position;
     int score;
+    string pattern;
 
-    Occurrence(int pos, const std::string &pat, int scr) : position(pos), pattern(pat), score(scr) {}
+    Occurrence(long pos, int scr, const string& pat) : position(pos), score(scr), pattern(pat) {}
 };
+struct PatPos{
+    long position;
+    string pattern;
 
+    PatPos(long pos, const string& pat) : position(pos), pattern(pat) {}
+};
+struct Scoring{
+    unsigned int match;
+    unsigned int mismatch; 
+    unsigned int gap;
+    unsigned int extend;
+    Scoring(const unsigned int mat, const unsigned int mis, const unsigned int gay, const unsigned int ext) : match(mat), mismatch(mis), gap(gay), extend(ext) {}
+};
 /// @brief ////////////////////////////////////
 class ApproxPatternMatching {
 public:
-    void run(string_view text,vector<string> patterns,int d, const unsigned int threads = 1) {
+    void run(string_view text,vector<string> patterns,int d, const unsigned int threads = 1, const unsigned int match = 1, const unsigned int mismatch = 4, const unsigned int gap = 6, const unsigned int extend = 1) {
+        const Scoring score = Scoring(match, mismatch, gap, extend);
+
         std::cout << "+-----------------------+" << endl;
         std::cout << "| Reference Genome size |" << text.size() << endl;
         std::cout << "| Patterns count        |" << patterns.size() << endl;
@@ -148,42 +162,48 @@ public:
         std::cout << "+-----------------------+" << endl;
 
         auto startT = std::chrono::high_resolution_clock::now();
-        std::vector<Occurrence> occs = findOccurrences(text, patterns, d, threads);
+
+        // auto comparator = [](const std::vector<long>& a, const std::vector<long>& b) {return a.size() < b.size();};
+        unordered_map<string, vector<long>> perfectScores; // dictionary to store the indexes of patterns that match perfectly
+
+        // get the index and pattern occurences (score computed inside)
+        vector<Occurrence> occs = findOccurrences(text, patterns, d, perfectScores, threads, score);
+        cout<<"poopy occur"<<endl;
         auto endT = std::chrono::high_resolution_clock::now();
-        cout<<"Num of occurences:"<<occs.size()<<endl;
-        std::cout << std::endl;
-        std::cout << "Elapsed Time to Find Occurences: " << std::chrono::duration_cast<std::chrono::milliseconds>(endT - startT).count() << " ms" << std::endl;
 
+        cout<<"Num of non-perfect occurences:"<<occs.size()<<endl;
+        cout<<endl;
+        cout << "Elapsed Time to Find All Occurences: " << std::chrono::duration_cast<std::chrono::milliseconds>(endT - startT).count() << " ms" << endl;
 
-
-        // cout<<"sorting occurences..."<<endl;
-        std::sort(occs.begin(), occs.end(),
-            [](const Occurrence& a, const Occurrence& b) { // sort based on index then by score
-                if (a.position != b.position){
-                    return a.position < b.position;
-                }
-                else{
-                    return a.score < b.score;
-                }
-            });
-        
-        // cout<<"Aligning reads to stringl..."<<endl;
-        string finalString = alignString(text, occs, threads);
+        // build dictionary to keep track of how many copies of a read exist
+        unordered_map<string, unsigned int> patternDict = getReadDict(patterns);
+        cout<<"\nNumber of Unique Patterns: "<<patternDict.size()<<endl;
+        cout<<"poopy dict"<<endl;
+        // Aligning reads to reference
+        vector<char> finalStringVector = alignPerfect(perfectScores, patternDict, text.length(), threads);
+        cout<<"poopy perfect"<<endl;
+        alignString(finalStringVector, occs, patternDict, threads);
+        cout<<"poopy align"<<endl;
+        string finalString(finalStringVector.begin(),finalStringVector.end());
+        // alignString(text, occs, patternDict, threads);
         endT = std::chrono::high_resolution_clock::now();
         std::cout << "Total Elapsed Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(endT - startT).count() << " ms" << endl;
         cout<<endl;
         std::ofstream finalFile("output.txt");
+        //finalFile<<text<<endl;
         finalFile<<finalString;
         finalFile.close();
-        cout<<"Saved string to output.txt"<<endl; 
+        cout<<"Saved string to output.txt"<<endl;
     }
 
 private:
     vector<long> bwtFromSuffixArray(string_view text, const std::vector<long>& order, const std::vector<char>& alphabet,std::unordered_map<char, std::vector<long>>& counts,std::unordered_map<char, long>& starts);
     bool approxMatching(string_view p1, string_view p2, int d);
-    vector<Occurrence> findOccurrences(string_view text, const std::vector<std::string>& patterns, int d, const unsigned int threads);
-    string alignString(string_view text, const vector<Occurrence>& orderedOcc, const unsigned int threads);
+    vector<Occurrence> findOccurrences(string_view text, const vector<string>& patterns, int d, unordered_map<string, vector<long>>& perfectScores, const unsigned int threads, const Scoring& scorer);
+    void alignString(vector<char>& finalStringVector, vector<Occurrence>& orderedOcc, unordered_map<string, unsigned int>& patternDict, const unsigned int threads);
     unordered_map<string, unsigned int> getReadDict(vector<string> patterns);
+    vector<char> alignPerfect(unordered_map<string, vector<long>>& perfectDict, unordered_map<string, unsigned int>& patternDict, const unsigned long textSize, const unsigned int threads);
+    int computeScore(string_view text, const string &pattern, int d, const Scoring& score);
 };
 
 unordered_map<string, unsigned int> ApproxPatternMatching::getReadDict(vector<string> patterns){
@@ -195,6 +215,7 @@ unordered_map<string, unsigned int> ApproxPatternMatching::getReadDict(vector<st
             readDict[str]++;
         }
     }
+    return readDict;
 }
 vector<long> ApproxPatternMatching::bwtFromSuffixArray(string_view text, const vector<long>& order, const vector<char>& alphabet,std::unordered_map<char, vector<long>>& counts,std::unordered_map<char, long>& starts) {
     long l = text.size();
@@ -220,10 +241,8 @@ vector<long> ApproxPatternMatching::bwtFromSuffixArray(string_view text, const v
         starts[ch] = currIndex;
         currIndex += counts[ch][l];
     }
-
     return bwt;
 }
-
 bool ApproxPatternMatching::approxMatching(string_view p1, string_view p2, const int d) {
     int error = 0;
     for (size_t i = 0; i < p1.size(); ++i) {
@@ -236,27 +255,27 @@ bool ApproxPatternMatching::approxMatching(string_view p1, string_view p2, const
     }
     return true;
 }
-int computeScore(string_view text, const string &pattern, int d) {
+int ApproxPatternMatching::computeScore(string_view text, const string &pattern, int d, const Scoring& scorer) {
     int score = 0;
 
     //+1 for match, -4 for mismatch, -6 for gap open, -1 for gap extension
     for (size_t i = 0; i < pattern.size(); ++i) {
         if (text[i] == pattern[i]) {
-            score += 1; // Match
+            score += scorer.match; // Match
         } else {
-            score -= 4; // Mismatch
+            score -= scorer.mismatch; // Mismatch
         }
     }
 
     int gapCount = 0;
-    for (char ch : text) {
-        if (ch == '-') {
+    for (char ch : pattern) {
+        if (ch == ' ') {
             gapCount += 1;
         }
     }
 
-    score -= 6 * std::min(gapCount, d); // Gap open
-    score -= std::max(0, gapCount - d); // Gap extension
+    score -= scorer.gap * std::min(gapCount, d); // Gap open
+    score -= scorer.extend * std::max(0, gapCount - d); // Gap extension
 
     return score;
 }
@@ -301,7 +320,7 @@ string specialSubstr(const string& str, long start, long end){
 
     return str.substr(startPos, endPos - startPos);
 }
-vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, const std::vector<std::string>& patterns, int d, const unsigned int threads) {
+vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, const std::vector<std::string>& patterns, int d, unordered_map<string, vector<long>>& perfectScores, const unsigned int threads, const Scoring& scorer) {
     SuffixArray suffixArray;
     vector<long> order = suffixArray.buildSuffixArray(text);
 
@@ -322,7 +341,7 @@ vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, cons
 
     std::vector<long> bwt = bwtFromSuffixArray(text, order, alphabet,counts,starts);
     std::vector<Occurrence> occs;
-
+    
     #pragma omp parallel for num_threads(threads) // Parallelize the loop using OpenMP
     for (unsigned int p = 0; p < patterns.size(); ++p) {
         const std::string& pattern = patterns[p];
@@ -342,6 +361,7 @@ vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, cons
                 if (currIndex >= 0) {
                     char symbol = seed.first[currIndex];
                     currIndex -= 1;
+                    // cout<< symbol<<endl; /////////////////////////////////////////////////////////// for testing ////////////////
                     if (counts[symbol][bottom + 1] - counts[symbol][top] > 0) {
                         top = starts[symbol] + counts[symbol][top];
                         bottom = starts[symbol] + counts[symbol][bottom + 1] - 1;
@@ -361,60 +381,104 @@ vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, cons
         for (long occ : currOccs) {
             string_view sub = text.substr(NegIndexToPos(text.size(),occ), n);
             if (approxMatching(sub, pattern, d)) {
-                int score = computeScore(sub, pattern, d); // could be merged with approxMatching for improvement (maybe)
-                // creates a crititcal data block to ensure no race conditions occur
-                #pragma omp critical
-                occs.emplace_back(Occurrence(occ, pattern, score));
+                int score = computeScore(sub, pattern, d, scorer); // could be merged with approxMatching for improvement (maybe)
+                if (score == pattern.length()){ // perfect match
+                    #pragma omp critical(perfectScore) // creates a crititcal data block to ensure no race conditions occur
+                    if (perfectScores.count(pattern)){ // check if vector with key already exists
+                        perfectScores[pattern].push_back(occ);
+                    }
+                    else {
+                        perfectScores[pattern] = {occ}; // create new vector
+                    }
+                }else{
+                    #pragma omp critical(occsCritical) // creates a crititcal data block to ensure no race conditions occur
+                    occs.emplace_back(Occurrence(occ, score, pattern));
+                }
+                
             }
         }
     }
     return occs;
 }
-
-string ApproxPatternMatching::alignString(string_view text, const vector<Occurrence>& orderedOcc, const unsigned int threads){ 
-    unordered_map<int,int> index2index; // map of reference index (left) to pattern index in occs vector
-    for (long long unsigned i=0; i < orderedOcc.size(); i++){ // build the dictionary
-            index2index.try_emplace(orderedOcc[i].position,i); // only save the first instance of it since it is sorted based on score
-        }
-    vector<Occurrence> scoredOcc, maxOcc; // save the trimmed Occ purely in increasing order of score in scoredOcc (score < 100). Save the rest in any order in maxOcc (score = 100)
-
-    for (auto& [key, value] : index2index){
-        if (orderedOcc[value].score == 100){
-            maxOcc.emplace_back(orderedOcc[value]);
-        }
-        else{
-            scoredOcc.emplace_back(orderedOcc[value]);
-        }
+vector<char> ApproxPatternMatching::alignPerfect(unordered_map<string, vector<long>>& perfectDict, unordered_map<string, unsigned int>& patternDict, const unsigned long textSize, const unsigned int threads){
+    
+    vector<char> conString(textSize-1, '-'); //  the vector that keeps track of the final string (-1 for the $)
+    vector<string> sortedKeys; //  vector to store the patterns in descending order of how many copies exist
+    for (const auto& entry : perfectDict) {
+        sortedKeys.push_back(entry.first); // store the keys
     }
+    std::sort(sortedKeys.begin(),sortedKeys.end(),[&patternDict](const std::string& a, const std::string& b){ // sort in descending order of how many copies exist
+        return patternDict[a] > patternDict[b];
+    });
 
-    std::sort(scoredOcc.begin(),scoredOcc.end(), // sort non-hundred scores in decreasing order
-        [](const Occurrence& a, const Occurrence& b){
-            return a.score < b.score;
+    vector<PatPos> toWrite;
+    // Assign indices to keys
+    for (const std::string& key : sortedKeys) {
+        vector<long>& indices = perfectDict[key];
+        unsigned int count = patternDict[key];
+        for (long int& index : indices) {
+            if (count > 0 && index < textSize) {
+                // Bind the index to the key
+                toWrite.emplace_back(PatPos(index,key));
+                count--;
+            }
         }
-    );
-
-    vector<char> conString(text.size(), '-');
-
-    // start building string from lowest scored onwards (overwrite priority)
-    for (unsigned int i = 0; i < scoredOcc.size(); i++){
-        for (unsigned int j = 0; j < scoredOcc[i].pattern.length(); j++){ // go through the characters of the string
-            conString[scoredOcc[i].position+j] = scoredOcc[i].pattern[j];
-        }
-    }
-
-    // can build the rest in parrallel regardless of race condition since they would place the same value in the same place
-    #pragma omp parallel for num_threads(threads) // OpenMP parallelization is applied to the immediately following loop after the #pragma omp parallel for directive.
-    for (unsigned int p = 0; p < maxOcc.size(); ++p) {
-        for (unsigned int j = 0; j < maxOcc[p].pattern.length(); j++){ // go through the characters of the string
-            conString[maxOcc[p].position+j] = maxOcc[p].pattern[j];
-        }
+        // Update the remaining usage count for the key
+        patternDict[key] = count;
     }
     
-    string outputString(conString.begin(),conString.end());
-    return outputString;
+    // write in parallel
+    #pragma omp parallel for num_threads(threads) // Parallelize the loop using OpenMP
+    for (unsigned int p = 0; p < toWrite.size(); ++p) {
+        for (unsigned int j = 0; j < toWrite[p].pattern.length(); j++){ // go through the characters of the string
+            conString[toWrite[p].position+j] = toWrite[p].pattern[j];
+        }
+    }
+
+    return conString;
+}
+void ApproxPatternMatching::alignString(vector<char>& finalStringVector, vector<Occurrence>& orderedOcc, unordered_map<string, unsigned int>& patternDict, const unsigned int threads){
+    unsigned long dashCount = 0;
+    #pragma omp parallel for reduction(+:dashCount) num_threads(threads) // reduction(+:dashCount) clause ensures that each thread has its own private copy of dashCount and the final result is combined after all threads finish execution
+    for (unsigned long i = 0; i < finalStringVector.size(); i++) {
+        if (finalStringVector[i] == '-') {
+            dashCount++;
+        }
+    }
+
+    // sort the remaining patterns based on index then score
+    std::sort(orderedOcc.begin(),orderedOcc.end(),[](const Occurrence& a,const Occurrence& b){ // sort based on index then by score
+        if (a.position != b.position){
+            return a.position < b.position;
+        }else{
+            return a.score < b.score;
+        }
+    });
+
+    string pattern;
+    //unsigned long lastDash = 0, dashIndex, dashPatIndex;
+    for (unsigned long i = 0; i < orderedOcc.size() && dashCount > 0; i++){ // keep adding till out of empty gaps
+        // get soonest dash
+        //auto it = std::find(finalStringVector.begin() + lastDash, finalStringVector.end(), '-'); // get first occurrence of '-' that we already know doesn't exist in the first lastDash indices
+        //lastDash = dashIndex;
+        //dashIndex = std::distance(finalStringVector.begin(), it);
+
+        pattern = orderedOcc[i].pattern;
+        //  && orderedOcc[i].position <= dashIndex && (orderedOcc[i].position + pattern.length()-1) >= dashIndex
+        if(patternDict[pattern] > 0){ // we are still allowed to use the pattern and this pattern can replace a -
+            --patternDict[pattern]; // reduce how many times we can still use this pattern
+            //dashPatIndex = dashIndex - orderedOcc[i].position;// get index to reduce redundant checking at the start
+            for (unsigned long j = 0; j < pattern.length(); j++){ // try to copy 
+                if(finalStringVector[orderedOcc[i].position + j] == '-'){
+                    finalStringVector[orderedOcc[i].position + j] = pattern[j];
+                    --dashCount;
+                }
+            }
+        }
+    }
 }
 
-vector<string> loadStrings(const string& filename){ // returns the reads then the reference as the last element to be popped out
+vector<string> loadStrings(const string& filename, const bool& check = false){ // returns the reads then the reference as the last element to be popped out
     vector<string> reads;
     std::ifstream f(filename);
     if (!f.is_open()) {
@@ -424,9 +488,12 @@ vector<string> loadStrings(const string& filename){ // returns the reads then th
     std::string line;
     while (std::getline(f,line)){
         if (line.length() > 2){
-            
-            //reads.push_back(std::regex_replace(line, std::regex("[\r\n\t]+$"), ""));  // check  for \r and remove it then add to vector
-            reads.push_back(line);
+            if (check){
+                reads.push_back(std::regex_replace(line, std::regex("[\r\n\t]+$"), ""));  // check  for \r and remove it then add to vector
+            }
+            else{
+                reads.push_back(line);
+            }
         }
     }
     f.close();
@@ -435,12 +502,12 @@ vector<string> loadStrings(const string& filename){ // returns the reads then th
 
 string buildReference(const vector<string> refVector){
     string reference;
-    cout<<"building reference..."<<std::endl;
+    //cout<<"building reference..."<<std::endl;
     for (unsigned int i=0; i<refVector.size();i++){
         reference += refVector[i];
     }
     reference += "$";
-    cout<<"done building reference"<<std::endl;
+    //cout<<"done building reference"<<std::endl;
     return reference;
 }
 
@@ -448,9 +515,9 @@ int main(){
     ApproxPatternMatching p;
     vector<string> reads;
     string reference;
-    reads = loadStrings("reads.txt");
-    reference = buildReference(loadStrings("reference.txt"));
-    p.run(reference,reads,2,10);
+    reads = loadStrings("tests/coronavirus_reads.txt");
+    reference = buildReference(loadStrings("tests/coronavirus_genome.txt"));
+    p.run(reference,reads,2,16);
 
     return 0;
 };

@@ -13,6 +13,7 @@ reference = "".join(reference)
 answerFile = open('output.txt','r')
 answer = answerFile.readlines()[0]
 answerFile.close()
+print("Reference Length: {}, Answer Length {}".format(len(reference),len(answer)))
 for i in range(len(reference)):
     if reference[i] != answer[i]:
         print("diff at index {}. expetected {} but got {}".format(i,reference[i],answer[i]))
