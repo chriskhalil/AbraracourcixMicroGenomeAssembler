@@ -1,6 +1,4 @@
 # Random Assembler(1) 
-
-## NAME
    Random Assembler - Micro genome assembler.
    Uses BWT for seeding/pattern matching and a greedy score based aligner.
 
