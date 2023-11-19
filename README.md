@@ -3,7 +3,7 @@
    Uses BWT for seeding/pattern matching and a greedy score based aligner.
 
 ## SYNOPSIS
-   **random_assembler** [-ms <match_score>] [-mp <mismatch_penalty>] [-gp <gap_penalty>] [-ep <extended_penalty>] [-vb] [-cr] [-mas] -irf <input_reference> -ird <input_reads> -m <allowed_mismatches> -t <num_threads>
+   **random_assembler** [-ms <match_score>] [-mp <mismatch_penalty>] [-gp <gap_penalty>] [-ep <extended_penalty>] [-vb] [-mascot] -irf <input_reference> -ird <input_reads> -m <allowed_mismatches> -t <num_threads>
 
 ## DESCRIPTION
    **Random Assembler** is an ultrafast and memory-efficient tool for assebmling reads to long reference sequences.
@@ -58,7 +58,7 @@
 
 ## EXAMPLES
    ```
-   abraracourcix -irf reference.fa -ird reads.fastq -m 2 -t 4
+   random_assebmler -irf reference.txt -ird reads.txt -m 2 -t 8 -vb
    ```
 ---
 
