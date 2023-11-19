@@ -5,10 +5,10 @@
    Uses BWT for seeding/pattern matching and a greedy score based aligner.
 
 ## SYNOPSIS
-   **abraracourcix** [-ms <match_score>] [-mp <mismatch_penalty>] [-gp <gap_penalty>] [-ep <extended_penalty>] [-vb] [-cr] [-mas] -irf <input_reference> -ird <input_reads> -m <allowed_mismatches> -t <num_threads>
+   **random** [-ms <match_score>] [-mp <mismatch_penalty>] [-gp <gap_penalty>] [-ep <extended_penalty>] [-vb] [-cr] [-mas] -irf <input_reference> -ird <input_reads> -m <allowed_mismatches> -t <num_threads>
 
 ## DESCRIPTION
-   **abraracourcix** is an ultrafast and memory-efficient tool for aligning sequencing reads to long reference sequences.
+   **Random Assembler** is an ultrafast and memory-efficient tool for assebmling reads to long reference sequences.
 
 ## OPTIONS
    ### Mandatory Arguments:
@@ -56,7 +56,7 @@
    Report bugs to cak29@mail.aub.edu and amc33@mail.aub.edu.
 
 ## SEE ALSO
-   More information can be found in the README file provided with the software.
+   More information can be found in the report.pdf.
 
 ## EXAMPLES
    ```
