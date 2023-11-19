@@ -38,10 +38,7 @@
    -vb
           Enable verbose mode.
 
-   -cr
-          Display program credits and licensing information.
-
-   -mas
+   -mascot
           Print mascot.
 
 ## AUTHORS
