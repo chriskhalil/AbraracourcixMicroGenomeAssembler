@@ -294,8 +294,7 @@ int ApproxPatternMatching::computeScore(string_view text,string_view pattern, in
 
     // The following function does the scoring for a given alignment after being matched with BWT
     // but essential info abou the sequence base quality is missing
-    // how are we supposed to know how to map ?? 
-    // mnodrob bel ramel ?
+    // how are we supposed to know how to map ??
 
     int score = 0;
     int gapCount = 0;
