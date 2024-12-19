@@ -1,3 +1,10 @@
+/*
+Code Authors: Ali Chehab (amc33@mail.aub.edu), Christophe Khalil (cak29@mail.aub.edu)
+Code: v0.2 - Upated
+AUB - BIOINFORMATICS
+*/
+
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -14,6 +21,7 @@
 #include <omp.h>
 #include <regex>
 #include <string_view>
+#include <array>  
 
 using std::string;
 using std::vector;
@@ -25,6 +33,7 @@ using std::endl;
 
 class SuffixArray{ // use counting sort and cumulative counts to efficiently construct the suffix array for the given input string
     public:
+    /* OLD non-efficient way
     vector<long> sortCharacters(string_view S){ // initialize, sort and get counts
         size_t l {S.size()};
         vector<long> order(l,0); //init vector of size l to 0
@@ -54,6 +63,41 @@ class SuffixArray{ // use counting sort and cumulative counts to efficiently con
         return order;
 
     }
+    */
+       vector<long> sortCharacters(string_view S) {
+        const size_t len = S.size();
+        vector<long> order(len);
+        
+        // Use array instead of unordered_map - much faster for ASCII
+        // 256 covers all possible ASCII characters
+        std::array<long, 256> count = {};
+        
+        // First pass: count characters
+        // Using raw pointer for faster access
+        const char* str = S.data();
+        for(size_t i = 0; i < len; ++i) {
+            count[static_cast<unsigned char>(str[i])]++;
+        }
+        
+        // Calculate cumulative counts
+        // Skip unused characters in ASCII range
+        long total = 0;
+        for(size_t i = 0; i < 256; ++i) {
+            long temp = count[i];
+            count[i] = total;
+            total += temp;
+        }
+        
+        // Build the order array using counting sort
+        // Go backwards to maintain stability
+        for(long i = len - 1; i >= 0; --i) {
+            unsigned char c = static_cast<unsigned char>(str[i]);
+            order[count[c]++] = i;
+        }
+        
+        return order;
+    }
+
     std::vector<long> computeCharClasses(string_view S, const std::vector<long>& order) {
     long l {S.size()};
     std::vector<long> charClass(l, 0);
@@ -240,12 +284,12 @@ private:
     bool approxMatching(string_view p1, string_view p2, int d);
     vector<Occurrence> findOccurrences(string_view text, const vector<string>& patterns, int d, unordered_map<string, vector<long>>& perfectScores, const unsigned int threads, const Scoring& scorer);
     void alignString(vector<char>& finalStringVector, vector<Occurrence>& orderedOcc, unordered_map<string, unsigned int>& patternDict, const unsigned int threads);
-    unordered_map<string, unsigned int> getReadDict(vector<string> patterns);
+    unordered_map<string, unsigned int> getReadDict(const vector<string>& patterns); // UPD1 const and pass by ref (how did we miss that in the 1st place ...)
     vector<char> alignPerfect(unordered_map<string, vector<long>>& perfectDict, unordered_map<string, unsigned int>& patternDict, const unsigned long textSize, const unsigned int threads);
     int computeScore(string_view text, string_view pattern, int d, const Scoring& score);
 };
 
-unordered_map<string, unsigned int> ApproxPatternMatching::getReadDict(vector<string> patterns){
+unordered_map<string, unsigned int> ApproxPatternMatching::getReadDict(const vector<string>& patterns){
     unordered_map<string, unsigned int> readDict;
     for(const string& str : patterns){ // go through all the patterns and update the dictionary
         if (readDict.find(str) == readDict.end()) {
@@ -332,7 +376,8 @@ size_t NegIndexToPos(const size_t str_size, long long index){
 
 vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, const std::vector<std::string>& patterns, int d, unordered_map<string, vector<long>>& perfectScores, const unsigned int threads, const Scoring& scorer) {
     SuffixArray suffixArray;
-    vector<long> order = suffixArray.buildSuffixArray(text);
+    //vector<long> order = suffixArray.buildSuffixArray(text); //old slow way
+      auto order = std::move(suffixArray.buildSuffixArray(text));  //UPD1
 
     vector<char> alphabet = {'$', 'a', 'c', 'g', 't'}; //  check if the alphabet should be capitalized or not
     bool keep = false;
@@ -352,7 +397,8 @@ vector<Occurrence> ApproxPatternMatching::findOccurrences(string_view text, cons
     std::vector<long> bwt = bwtFromSuffixArray(text, order, alphabet,counts,starts);
     std::vector<Occurrence> occs;
     
-    #pragma omp parallel for num_threads(threads) // Parallelize the loop using OpenMP
+   // #pragma omp parallel for num_threads(threads) // Parallelize the loop using OpenMP
+    #pragma omp parallel for schedule(dynamic) num_threads(threads) // UPD1
     for (unsigned int p = 0; p < patterns.size(); ++p) {
         string_view pattern = patterns[p];
         std::set<long> currOccs;
