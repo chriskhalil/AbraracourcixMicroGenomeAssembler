@@ -1,5 +1,5 @@
-# Random Assembler(1) 
-   Random Assembler - Micro genome assembler.
+## AbraracourcixMicroGenomeAssembler
+  A high-performance bioinformatics tool for approximate pattern matching and genome assembly, developed as part of the AUB Bioinformatics Graduate course.
    Uses BWT for seeding/pattern matching and a greedy score based aligner.
 
 ## SYNOPSIS
@@ -7,7 +7,9 @@
 
 ## DESCRIPTION
    **Random Assembler** is an ultrafast and memory-efficient tool for assebmling reads to long reference sequences.
-
+   **bwt_storm** is a faster and more optimized approach based on our random_assembler.
+    
+    Note: bwt_storm has not been test as much as the base random_assembler as it was done after the competition as training and fun project.
 ## OPTIONS
    ### Mandatory Arguments:
    -irf <input_reference>
